@@ -1,44 +1,51 @@
+IMAGE_NAME = s21containers
+DOCKERFILE = docker/Dockerfile
 NPROC := $(shell expr $$(nproc) - 2)
+
 ifeq ($(shell expr $(NPROC) \< 1), 1)
   NPROC := 1
 endif
 
+.PHONY: docker-build
+docker-build:
+	docker build -t $(IMAGE_NAME) -f $(DOCKERFILE) .
+
 .PHONY: build
 build:
-	mkdir -p build
-	cd build && cmake -DCOVERAGE=ON -S .. && cmake --build . --parallel $(NPROC)
+	docker run --rm -v $(PWD):/project -w /project/build $(IMAGE_NAME) bash -c "cmake -DCOVERAGE=ON -B . -S .. && cmake --build . --parallel $(NPROC)"
 
 .PHONY: test
-test: build
-	cd build && ctest --parallel $(NPROC) --output-on-failure
+test:
+	docker run --rm -it -v $(PWD):/project -w /project/build $(IMAGE_NAME) ctest --parallel $(NPROC) --output-on-failure
 
 .PHONY: test-%
-test-%: build
-	cd build && ctest --parallel $(NPROC) -R ^$*$$ --output-on-failure
+test-%:
+	docker run --rm -it -v $(PWD):/project -w /project/build $(IMAGE_NAME) ctest --parallel $(NPROC) -R ^$*$$ --output-on-failure
 
 .PHONY: test-verbose-%
-test-verbose-%: build
-	cd build && ctest --parallel $(NPROC) -V -R ^$*$$
+test-verbose-%:
+	docker run --rm -v $(PWD):/project -w /project/build $(IMAGE_NAME) ctest --parallel $(NPROC) -V -R ^$*$$
 
-.PHONY: clang-format-test
-clang-format-test:
-	cmake --build build --target clang-format-test
+.PHONY: clang-format
+clang-format:
+	docker run --rm -v $(PWD):/project -w /project/build $(IMAGE_NAME) cmake --build . --target clang-format-test
 
 .PHONY: clang-format-fix
 clang-format-fix:
-	cmake --build build --target clang-format-fix
+	docker run --rm -v $(PWD):/project -w /project/build $(IMAGE_NAME) cmake --build . --target clang-format-fix
 
 .PHONY: valgrind
 valgrind:
-	cmake --build build --target valgrind-test
+	docker run --rm -v $(PWD):/project -w /project/build $(IMAGE_NAME) cmake --build . --target valgrind-test
 
 .PHONY: coverage
 coverage:
-	cmake --build build --target coverage
+	docker run --rm -v $(PWD):/project -w /project/build $(IMAGE_NAME) cmake --build . --target coverage
 
 .PHONY: help
 help:
-	@echo 'make build                  — собрать проект'
+	@echo 'make docker-build           — собрать docker image'
+	@echo 'make build                  — пересобрать проект в контейнере'
 	@echo 'make test                   — все тесты (ctest)'
 	@echo 'make test-<имя_теста>       — один тест (make test-s21_test_rb_tree)'
 	@echo 'make test-verbose-<имя>     — один тест подробно'
@@ -49,4 +56,4 @@ help:
 
 .PHONY: clean
 clean:
-	rm -rf build
+	docker run --rm -v $(PWD):/project -w /project $(IMAGE_NAME) rm -rf build
